@@ -1,0 +1,372 @@
+1.	Лістинг коду index.php:
+<?php
+session_start();
+require_once 'DatabaseConnector.php';
+$db = new DatabaseConnector("pet_shop");
+if (!$db->connect()) {
+    die("Помилка підключення до бази даних");
+}
+
+$currentLang = isset($_SESSION['lang']) ? $_SESSION['lang'] : 'uk';
+$translations = include "{$currentLang}.php";
+
+$selectedCity = isset($_SESSION['selected_city']) ? $_SESSION['selected_city'] : 'Миколаїв';
+$cityId = $db->readOne("SELECT id FROM cities WHERE name = ?", [$selectedCity])['id'] ?? 9;
+
+$animalTypes = $db->readAll("SELECT id, animal_type FROM animals");
+$animalImages = array(
+    'css/dog_slider.png',
+    'css/cat_slider.jpg',
+    'css/rat_slider.jpg',
+    'css/fish_slider.png',
+    'css/parrot_slider.png',
+    'css/rabbit_slider.jpg'
+);
+?>
+
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log(Dog) Зоомагазин</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <meta http-equiv="refresh" content="180">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <img src="css/logo.png" alt="Log(Dog) Логотип" class="logo">
+                </div>
+                <div class="col">
+                    <form class="search-form">
+                        <input type="text" class="form-control rounded-pill"
+                            placeholder="<?php echo $translations['search_placeholder']; ?>">
+                    </form>
+                </div>
+                <div class="col-auto ml-auto">
+                    <button type="button" class="btn btn-outline-light lang-btn">
+                        <?php echo $currentLang === 'uk' ? 'Укр' : 'Eng'; ?>
+                    </button>
+                    <button type="button" class="btn btn-outline-light city-btn"
+                        onclick="window.location.href='location.php'">
+                        <?php echo htmlspecialchars($selectedCity); ?>
+                    </button>
+                    <button type="button" class="btn btn-outline-light login-btn"
+                        onclick="window.location.href='<?php echo isset($_SESSION['user_login']) ? 'logout.php' : 'vhid.php'; ?>'">
+                        <?php echo isset($_SESSION['user_login']) ? $translations['logout'] : $translations['login']; ?>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <nav class="top-nav">
+        <div class="container">
+            <ul class="btn-container">
+                <li><a id="active-link" class="btn-nav" href="index.php"><?php echo $translations['main_page']; ?></a>
+                </li>
+                <li><a href="sales.php" class="btn-nav"><?php echo $translations['sales']; ?></a></li>
+                <li><a href="brand.php" class="btn-nav"><?php echo $translations['brands']; ?></a></li>
+                <li><a href="forum.php" class="btn-nav"><?php echo $translations['forum']; ?></a></li>
+            </ul>
+            <div id="animalSlider" class="carousel slide slider">
+                <div class="carousel-inner">
+                    <?php
+                    foreach ($animalTypes as $index => $animalType) {
+                        $active = ($index == 0) ? 'active' : '';
+                        echo '<div class="carousel-item ' . $active . '">
+                            <img src="' . $animalImages[$index] . '" alt="' . $animalType['animal_type'] . '" title="' . $animalType['animal_type'] . '" class="animal-img d-block w-100" data-animal-type-id="' . $animalType['id'] . '">
+                        </div>';
+                    }
+                    ?>
+                </div>
+                <a class="carousel-control-prev" href="#animalSlider" role="button" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                    <span class="visually-hidden"></span>
+                </a>
+                <a class="carousel-control-next" href="#animalSlider" role="button" data-bs-slide="next">
+                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                    <span class="visually-hidden"></span>
+                </a>
+            </div>
+        </div>
+    </nav>
+    <div id="filters">
+        <label>
+            <input type="checkbox" name="ageRestriction" value="child" checked>
+            <span><?php echo $translations['child']; ?></span>
+        </label>
+        <label>
+            <input type="checkbox" name="ageRestriction" value="teen" checked>
+            <span><?php echo $translations['teen']; ?></span>
+        </label>
+        <label>
+            <input type="checkbox" name="ageRestriction" value="adult" checked>
+            <span><?php echo $translations['adult']; ?></span>
+        </label>
+    </div>
+    <div class="price-filter">
+        <div id="priceSlider"></div>
+        <div class="price-inputs">
+            <input type="number" id="minPrice" min="0" max="100" value="0">
+            <input type="number" id="maxPrice" min="0" max="100" value="100">
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="row">
+            <div class="col">
+                <div id="productList" class="productList"></div>
+            </div>
+        </div>
+    </div>
+    <?php if (!isset($_SESSION['user_login'])): ?>
+        <div class="reklama-pic-div"><img src="css/reklama.png" alt="reklama"> </div>
+        <div class="advertisement">
+            <img src="css/rabbit_icon_reklama.png" alt="Кролик" class="reklama-img">
+            <div class="register-zaklik">
+                <a href="registration.php"><?php echo $translations['register']; ?></a><br>
+                <p><?php echo $translations['end_date_message']; ?>
+                    <?php
+                    $currentDate = time();
+                    $endDate = strtotime('30 June 2026 00:00:00');
+
+                    $diff = $endDate - $currentDate;
+                    $days = floor($diff / (60 * 60 * 24));
+                    $hours = floor(($diff % (60 * 60 * 24)) / (60 * 60));
+                    $minutes = floor(($diff % (60 * 60)) / 60);
+
+                    echo "$days {$translations['days']} $hours {$translations['hours']} $minutes {$translations['minutes']}";
+                    ?>
+                </p>
+            </div>
+        </div>
+    <?php endif; ?>
+    <footer>
+        <div class="footer-content"></div>
+    </footer>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            const min = 0, max = 100;
+            var priceSlider = document.getElementById('priceSlider');
+            var minPriceInput = document.getElementById('minPrice');
+            var maxPriceInput = document.getElementById('maxPrice');
+
+            noUiSlider.create(priceSlider, {
+                start: [min, max],
+                connect: true,
+                range: {
+                    'min': min,
+                    'max': max
+                }
+            });
+
+            priceSlider.noUiSlider.on('update', function (values, handle) {
+                var value = Math.round(values[handle]);
+                if (handle) {
+                    maxPriceInput.value = value;
+                } else {
+                    minPriceInput.value = value;
+                }
+            });
+
+            priceSlider.noUiSlider.on('change', updateProducts);
+            minPriceInput.addEventListener('change', function () {
+                if (this.value > maxPriceInput.value) {
+                    this.value = maxPriceInput.value;
+                }
+                priceSlider.noUiSlider.set([this.value, null]);
+                updateProducts();
+            });
+
+            maxPriceInput.addEventListener('change', function () {
+                if (this.value < minPriceInput.value) {
+                    this.value = minPriceInput.value;
+                }
+                priceSlider.noUiSlider.set([null, this.value]);
+                updateProducts();
+            });
+
+            $('#animalSlider').on('slid.bs.carousel', updateProducts);
+
+            $('input[name="ageRestriction"]').on('change', function () {
+                if ($('input[name="ageRestriction"]:checked').length === 0) {
+                    this.checked = true;
+                } else {
+                    updateProducts();
+                }
+            });
+
+            function updateProducts() {
+                var animalTypeId = $('.carousel-item.active .animal-img').data('animal-type-id');
+                var ageRestrictions = $('input[name="ageRestriction"]:checked').map(function () {
+                    return this.value;
+                }).get();
+                var minPrice = parseInt(minPriceInput.value);
+                var maxPrice = parseInt(maxPriceInput.value);
+                var animalType = $('.carousel-item.active .animal-img').attr('title').toLowerCase();
+                var cityId = <?php echo $cityId; ?>;
+
+                $.ajax({
+                    url: 'getProducts.php',
+                    method: 'POST',
+                    data: {
+                        animalTypeId: animalTypeId,
+                        ageRestrictions: ageRestrictions,
+                        minPrice: minPrice,
+                        maxPrice: maxPrice,
+                        animalType: animalType,
+                        cityId: cityId
+                    },
+                    success: function (data) {
+                        $('#productList').html(data);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("AJAX error: " + status + ": " + error);
+                        console.log(xhr.responseText);
+                    }
+                });
+            }
+            updateProducts();
+
+            $('.lang-btn').on('click', function () {
+                var currentLang = '<?php echo $currentLang; ?>';
+                var newLang = currentLang === 'uk' ? 'en' : 'uk';
+
+                $.ajax({
+                    url: 'getTranslations.php',
+                    method: 'POST',
+                    data: { lang: newLang },
+                    success: function (response) {
+                        if (response === 'success') {
+                            location.reload();
+                        } else {
+                            console.error('Failed to change language');
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("AJAX error: " + status + ": " + error);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
+2.	Лістинг коду гравця getProducts.php:
+<?php
+session_start();
+require_once 'DatabaseConnector.php';
+$db = new DatabaseConnector('pet_shop');
+if (!$db->connect()) {
+    die("Помилка підключення до бази даних: " . $db->getConnection()->connect_error);
+}
+function getProductsByAnimalType($animalTypeId, $ageRestrictions, $minPrice, $maxPrice, $animalType, $cityId)
+{
+    global $db;
+    $query = "SELECT Tovary.id, Tovary.name, Tovary.article_number, Tovary.price, Tovary.count_of_availability,
+    product_type.product_type, age_condition.age_restriction, brand.brand_name
+    FROM Tovary
+    INNER JOIN product_type ON Tovary.product_type_id = product_type.id
+    INNER JOIN age_condition ON Tovary.age_restriction_id = age_condition.id
+    INNER JOIN brand ON Tovary.brand_id = brand.id
+    WHERE Tovary.animal_type_id = ?
+    AND Tovary.price BETWEEN ? AND ?
+    AND Tovary.city_id = ?";
+
+    $params = [$animalTypeId, $minPrice, $maxPrice, $cityId];
+    $types = "iddi";
+
+    if (!empty($ageRestrictions)) {
+        $placeholders = implode(',', array_fill(0, count($ageRestrictions), '?'));
+        $query .= " AND age_condition.age_restriction IN ($placeholders)";
+        $params = array_merge($params, $ageRestrictions);
+        $types .= str_repeat('s', count($ageRestrictions));
+    }
+
+    $stmt = $db->getConnection()->prepare($query);
+    if (!$stmt) {
+        error_log("Помилка підготовки запиту: " . $db->getConnection()->error);
+        return [];
+    }
+
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if (!$result) {
+        error_log("Помилка виконання запиту: " . $stmt->error);
+        return [];
+    }
+
+    $products = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $buttonClass = getButtonClass($animalType);
+    foreach ($products as &$product) {
+        $product['button_class'] = $buttonClass;
+    }
+
+    return $products;
+}
+
+function getButtonClass($animalType)
+{
+    switch ($animalType) {
+        case 'dog':
+        case 'parrot':
+        case 'rabbit':
+        case 'rat':
+            return 'green-button';
+        case 'cat':
+            return 'orange-button';
+        case 'fish':
+            return 'blue-button';
+        default:
+            return 'default-button';
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $animalTypeId = isset($_POST['animalTypeId']) ? intval($_POST['animalTypeId']) : 0;
+    $ageRestrictions = isset($_POST['ageRestrictions']) && is_array($_POST['ageRestrictions']) ? $_POST['ageRestrictions'] : [];
+    $minPrice = isset($_POST['minPrice']) ? floatval($_POST['minPrice']) : 0;
+    $maxPrice = isset($_POST['maxPrice']) ? floatval($_POST['maxPrice']) : PHP_FLOAT_MAX;
+    $animalType = isset($_POST['animalType']) ? $_POST['animalType'] : '';
+    $cityId = isset($_POST['cityId']) ? intval($_POST['cityId']) : 9;
+
+    $products = getProductsByAnimalType($animalTypeId, $ageRestrictions, $minPrice, $maxPrice, $animalType, $cityId);
+
+    if (empty($products)) {
+        echo "Товари не знайдено.";
+    } else {
+        $html = '';
+        foreach ($products as $product) {
+            $html .= '<div class="product">';
+            $html .= '<h3>' . htmlspecialchars($product['name']) . '</h3>';
+            $html .= '<p>Артикул: ' . htmlspecialchars($product['article_number']) . '</p>';
+            $html .= '<p>Ціна: ' . htmlspecialchars($product['price']) . ' грн</p>';
+            $html .= '<p>Наявність: ' . htmlspecialchars($product['count_of_availability']) . '</p>';
+            $html .= '<p>Тип продукту: ' . htmlspecialchars($product['product_type']) . '</p>';
+            $html .= '<p>Вікове обмеження: ' . htmlspecialchars($product['age_restriction']) . '</p>';
+            $html .= '<p>Бренд: ' . htmlspecialchars($product['brand_name']) . '</p>';
+            if (isset($_SESSION['user_login'])) {
+                $html .= '<a href="order.php?product_id=' . $product['id'] . '" class="buy-button">Придбати</a>';
+            }
+            $html .= '</div>';
+        }
+        echo $html;
+    }
+}
+?>

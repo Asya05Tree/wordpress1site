@@ -1,0 +1,7 @@
+function custom_search_filter($query) {
+    if (!is_admin() && $query->is_main_query() && $query->is_search()) {
+        $query->set('post_type', array('post', 'page', 'category', 'instruction'));
+    }
+    return $query;
+}
+add_filter('pre_get_posts', 'custom_search_filter');
